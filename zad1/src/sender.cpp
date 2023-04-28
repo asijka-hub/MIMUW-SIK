@@ -1,7 +1,12 @@
+// author Andrzej Sijka as429592
+// MIMUW 2023
+
 #include <boost/program_options.hpp>
 #include <iostream>
 #include <cstdint>
 #include <regex>
+#include <vector>
+#include <cstdio>
 #include <utility>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -63,11 +68,11 @@ namespace {
 
         desc.add_options()
                 ("help,h", "produce help message")
-                ("dest_addr,a", po::value<std::string>(&program_args.dest_addr.combined)->required(), "sender address")
-                ("data_port,P", po::value<u16>(&program_args.data_port)->default_value(DEFAULT_DATA_PORT),
+                ("a,a", po::value<std::string>(&program_args.dest_addr.combined)->required(), "sender address")
+                ("P,P", po::value<u16>(&program_args.data_port)->default_value(DEFAULT_DATA_PORT),
                  "port used for data transfer")
-                ("psize,p", po::value<u64>(&program_args.psize)->default_value(DEFAULT_PSIZE), "size of audio_data")
-                ("nazwa,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "server address");
+                ("p,p", po::value<u64>(&program_args.psize)->default_value(DEFAULT_PSIZE), "size of audio_data")
+                ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "server address");
 
         try {
             po::variables_map vm;
@@ -113,7 +118,7 @@ namespace {
             close(_socket_fd);
         }
 
-        void send_message(const char* msg, size_t length) {
+        void send_message(const char* msg, size_t length) const {
             errno = 0;
             ssize_t sent_length = send(_socket_fd, msg, length, 0);
             if (sent_length < 0) {
@@ -126,17 +131,46 @@ namespace {
     class Sender {
     private:
         UdpSocket _socket;
-        std::time_t _curr_time{};
+        std::time_t _session_id{};
+        u64 _psize{};
+        u64 _first_byte_enum{};
+
+        u64 get_current_first_byte_enum() {
+            u64 res = _first_byte_enum;
+            res = __builtin_bswap64(res);
+            _first_byte_enum += _psize;
+
+            return res;
+        }
+
     public:
         Sender() = delete;
 
-        explicit Sender(struct Args &args) : _socket(args.dest_addr, args.data_port) {
-            _curr_time = chrono::system_clock::to_time_t(chrono::system_clock::now());
+        explicit Sender(struct Args &args) : _socket(args.dest_addr, args.data_port), _psize(args.psize) {
+            _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
         }
 
         void read_and_send() {
-            cout<<"wysylanie wiadomosci\n";
-            _socket.send_message("sraka",5);
+            vector<char> package(_psize + 2 * 8); // extra space for (u64) session_id and (u64) first_byte_enum
+
+            u64 session_id = __builtin_bswap64(_session_id); // host order to network order swap
+            memcpy(package.data(), &session_id, 8);
+
+            size_t n;
+            u64 first_byte_enum{};
+            while ((n = std::fread(package.data() + 2 * 8, 1, _psize, stdin))) {
+                first_byte_enum = get_current_first_byte_enum();
+                memcpy(package.data() + 8, &first_byte_enum, 8);
+
+                _socket.send_message(package.data(), _psize);
+
+                std::fill(package.begin() +  8, package.end(), 0);
+            }
+
+            if (n == _psize)
+                _socket.send_message(package.data(), _psize);
+
+            // if readed data is less than psize we drop the last packet
         }
     };
 }
@@ -146,7 +180,6 @@ int main(int argc, char **argv) {
 
     Sender sender{program_args};
     sender.read_and_send();
-
 
     return 0;
 }
