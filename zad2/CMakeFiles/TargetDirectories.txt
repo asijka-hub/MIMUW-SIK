@@ -1,0 +1,3 @@
+/home/ubuntu_andrzej/studia/MIMUW-SIK/zad2/CMakeFiles/sikradio-sender.dir
+/home/ubuntu_andrzej/studia/MIMUW-SIK/zad2/CMakeFiles/edit_cache.dir
+/home/ubuntu_andrzej/studia/MIMUW-SIK/zad2/CMakeFiles/rebuild_cache.dir
