@@ -18,7 +18,8 @@
 #include <mutex>
 #include "../include/common.h"
 #include "../include/parsing_helper.h"
-#include "../include/concurrent_queue.h"
+#include "../include/concurrent_structs.h"
+#include "../include/connection.h"
 
 namespace {
     using namespace std;
@@ -35,47 +36,36 @@ namespace {
         }
     };
 
-    class UdpSocket {
-    private:
-        int _socket_fd{};
-        struct sockaddr_in _receiver_addr{};
 
-        void create_socket(const struct address& addr, u16 port) {
-            _socket_fd = open_socket();
-
-            _receiver_addr = get_address(addr.combined.c_str(), port);
-
-            connect_socket(_socket_fd, &_receiver_addr);
-        }
-
-    public:
-        UdpSocket() = delete;
-
-        UdpSocket(const struct address& addr, u16 port) {
-            create_socket(addr, port);
-        }
-
-        ~UdpSocket() {
-            close(_socket_fd);
-        }
-
-        void send_message(const char* msg, size_t length) const {
-            errno = 0;
-            ssize_t sent_length = send(_socket_fd, msg, length, 0);
-            if (sent_length < 0) {
-                PRINT_ERRNO();
-            }
-            ENSURE(sent_length == (ssize_t) length);
-        }
-    };
-
-    void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue, u16 ctrl_port, const struct address& addr) {
+    void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
+                         shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
         cout << "hello from thread\n";
 
-        UdpSocket listening_socket{addr, ctrl_port};
+        UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
+
+        vector<char> buffer(1000);
+        size_t read_len{};
 
         while (active) {
+            read_len = listening_socket.recv_message(buffer);
 
+            // zalozmy ze to rexmit
+
+
+        }
+    }
+
+    void repeater_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
+                         shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
+        cout << "hello from REPEATER thread\n";
+
+        std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
+
+        while (active) {
+            // retransmite
+
+
+            std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
         }
     }
 
@@ -88,7 +78,7 @@ namespace {
         u64 _first_byte_enum{};
         atomic<bool> _active{true};
         shared_ptr<ConcurrentQueue<char>> _retransmission_queue;
-        shared_ptr<ConcurrentQueue<u64>> _first_byte_num_queue;
+        shared_ptr<ConcurrentSet> _first_byte_num_set;
 
         u64 get_current_first_byte_enum() {
             u64 res = _first_byte_enum;
@@ -109,75 +99,45 @@ namespace {
                 _socket(args.mcast_addr, args.data_port), _psize(args.psize), _rtime(args.rtime) {
             _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
-            // starting listener thread
             _retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
-            _first_byte_num_queue = make_shared<ConcurrentQueue<u64>>(args.fsize);
+            _first_byte_num_set = make_shared<ConcurrentSet>();
+            // starting listener thread
+
             thread listener{listener_thread,
-                            std::ref(_active), _retransmission_queue, args.ctrl_port, args.mcast_addr   };
+                            std::ref(_active), _retransmission_queue, _first_byte_num_set, ref(args)};
             listener.detach();
+
+            // starting repeater thread
+            thread repeater{repeater_thread, std::ref(_active), _retransmission_queue, _first_byte_num_set, ref(args)};
+            repeater.detach();
         }
 
-//        void read_and_send() {
-//            vector<char> package(_psize + 2 * 8); // extra space for (u64) session_id and (u64) first_byte_enum
-//
-//            u64 session_id = __builtin_bswap64(_session_id); // host order to network order swap
-//            memcpy(package.data(), &session_id, 8);
-//
-//            size_t n;
-//            u64 first_byte_enum{};
-//            while ((n = std::fread(package.data() + 2 * 8, 1, _psize, stdin))) {
-//                first_byte_enum = get_current_first_byte_enum();
-//                memcpy(package.data() + 8, &first_byte_enum, 8);
-//
-//                _socket.send_message(package.data(), _psize);
-//
-//                std::fill(package.begin() +  8, package.end(), 0);
-//            }
-//
-//            if (n == _psize)
-//                _socket.send_message(package.data(), _psize);
-//
-//            // if readed data is less than psize we drop the last packet
-//
-//            finish();
-//        }
-
         void read_and_send() {
-            vector<char> package{};
+            vector<char> package(_psize + 2 * 8); // extra space for (u64) session_id and (u64) first_byte_enum
+
+            u64 session_id = __builtin_bswap64(_session_id); // host order to network order swap
+            memcpy(package.data(), &session_id, 8);
 
             size_t n;
-            size_t first_byte_enum;
-
-            auto start = std::chrono::high_resolution_clock ::now();
-
+            u64 first_byte_enum{};
             while ((n = std::fread(package.data() + 2 * 8, 1, _psize, stdin))) {
-                auto curr = std::chrono::high_resolution_clock ::now();
+                first_byte_enum = get_current_first_byte_enum();
+                memcpy(package.data() + 8, &first_byte_enum, 8);
 
-                if (std::chrono::duration_cast<std::chrono::milliseconds>(curr - start).count() > _rtime) {
-                    start = curr;
-                    //  retransmitujemy
-                    auto count = _retransmission_queue->how_much_to_retransmit();
+                _socket.send_message(package.data(), _psize);
 
-
-                } else {
-
-                    first_byte_enum = get_current_first_byte_enum();
-                    memcpy(package.data() + 8, &first_byte_enum, 8);
-
-                    _socket.send_message(package.data(), _psize);
-
-                    std::fill(package.begin() + 8, package.end(), 0);
-                }
+                std::fill(package.begin() +  8, package.end(), 0);
             }
 
             if (n == _psize)
                 _socket.send_message(package.data(), _psize);
 
-//            // if readed data is less than psize we drop the last packet
+            // if readed data is less than psize we drop the last packet
 
             finish();
-
         }
+
+
 
     };
 }
