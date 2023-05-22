@@ -17,12 +17,11 @@
 #include <thread>
 #include <mutex>
 #include "../include/common.h"
-
-using namespace std;
-
-namespace po = boost::program_options;
+#include "../include/parsing_helper.h"
 
 namespace {
+    using namespace std;
+
     class Exception : public std::exception
     {
         std::string _msg;
@@ -34,89 +33,6 @@ namespace {
             return _msg.c_str();
         }
     };
-
-
-    using std::cout;
-    using std::cerr;
-    using u16 = std::uint16_t;
-    using u32 = std::uint32_t;
-    using u64 = std::uint64_t;
-    using i64 = std::int64_t;
-
-    const u32 index_number = 429592;
-    const u16 DEFAULT_DATA_PORT = static_cast<u16>(20000 + index_number % 10000);
-    const u16 DEFAULT_CTRL_PORT = static_cast<u16>(30000 + index_number % 10000);
-    const u64 DEFAULT_PSIZE = 512;
-    const u64 DEFAULT_FSIZE = 128 * 1024;
-    const u64 DEFAULT_RTIME = 250;
-    const std::string DEFAULT_NAME = "Nienazwany Nadajnik";
-
-    void check_positive(auto number) {
-        if (number < 0)
-            throw po::validation_error(po::validation_error::invalid_option_value);
-    }
-
-    void check_port(int port) {
-        if (port < 0 || port > 65535)
-            throw po::validation_error(po::validation_error::invalid_option_value);
-    }
-
-    struct address {
-        std::string combined;
-    };
-    
-    struct Args {
-        struct address mcast_addr;
-        u16 data_port{};
-        u16 ctrl_port{};
-        u64 psize{};
-        u64 fsize{};
-        u64 rtime{};
-        std::string name;
-    };
-
-    struct Args parse_args(int argc, char **argv) {
-        struct Args program_args;
-        po::options_description desc("Sender options");
-
-        int data_port, ctrl_port;
-        i64 psize, fsize, rtime;
-
-        desc.add_options()
-                ("help,h", "produce help message")
-                ("a,a", po::value<std::string>(&program_args.mcast_addr.combined)->required(), "broad cast address")
-                ("P,P", po::value<int>(&data_port)->default_value(DEFAULT_DATA_PORT)->notifier(&check_port),
-                 "port used for DATA transfer [0-65535]")
-                ("C,C", po::value<int>(&ctrl_port)->default_value(DEFAULT_CTRL_PORT)->notifier(&check_port),
-                 "port used for CONTROL data transfer [0-65535]")
-                ("p,p", po::value<i64>(&psize)->default_value(DEFAULT_PSIZE)->notifier(&check_positive<i64>), "size of audio_data > 0")
-                ("f,f", po::value<i64>(&fsize)->default_value(DEFAULT_FSIZE)->notifier(&check_positive<i64>), "size of fifo queue > 0")
-                ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0")
-                ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "server address");
-
-        try {
-            po::variables_map vm;
-            po::store(po::parse_command_line(argc, argv, desc), vm);
-            if (vm.count("help")) {
-                std::cout << desc << std::endl;
-                exit(0);
-            }
-
-            po::notify(vm);
-        }
-        catch (std::exception &e) {
-            std::cerr << e.what() << std::endl;
-            exit(1);
-        }
-
-        program_args.data_port = static_cast<u16>(data_port);
-        program_args.ctrl_port = static_cast<u16>(ctrl_port);
-        program_args.psize = static_cast<u64>(psize);
-        program_args.fsize = static_cast<u64>(fsize);
-        program_args.rtime = static_cast<u64>(rtime);
-
-        return program_args;
-    }
 
     class UdpSocket {
     private:
@@ -160,7 +76,7 @@ namespace {
     public:
         explicit ConcurrentQueue(u64 fsize) : _fsize(fsize) {
         }
-        
+
         void push(const std::vector<char>& e) {
             std::unique_lock<std::mutex> lock(_mut);
 
@@ -233,7 +149,7 @@ namespace {
     public:
         Sender() = delete;
 
-        explicit Sender(struct Args &args) :
+        explicit Sender(struct SenderArgs &args) :
                 _socket(args.mcast_addr, args.data_port), _psize(args.psize), _rtime(args.rtime) {
             _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
@@ -303,7 +219,7 @@ namespace {
 }
 
 int main(int argc, char **argv) {
-    struct Args program_args = parse_args(argc, argv);
+    struct SenderArgs program_args = parse_sender_args(argc, argv);
 
     Sender sender{program_args};
     sender.read_and_send();
