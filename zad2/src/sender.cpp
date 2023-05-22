@@ -88,6 +88,7 @@ namespace {
         u64 _first_byte_enum{};
         atomic<bool> _active{true};
         shared_ptr<ConcurrentQueue<char>> _retransmission_queue;
+        shared_ptr<ConcurrentQueue<u64>> _first_byte_num_queue;
 
         u64 get_current_first_byte_enum() {
             u64 res = _first_byte_enum;
@@ -110,6 +111,7 @@ namespace {
 
             // starting listener thread
             _retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
+            _first_byte_num_queue = make_shared<ConcurrentQueue<u64>>(args.fsize);
             thread listener{listener_thread,
                             std::ref(_active), _retransmission_queue, args.ctrl_port, args.mcast_addr   };
             listener.detach();
