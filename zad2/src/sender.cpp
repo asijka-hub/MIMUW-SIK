@@ -18,6 +18,7 @@
 #include <mutex>
 #include "../include/common.h"
 #include "../include/parsing_helper.h"
+#include "../include/concurrent_queue.h"
 
 namespace {
     using namespace std;
@@ -68,53 +69,7 @@ namespace {
         }
     };
 
-    class ConcurrentQueue {
-    private:
-        std::vector<char> _queue;
-        std::mutex _mut;
-        u64 _fsize;
-    public:
-        explicit ConcurrentQueue(u64 fsize) : _fsize(fsize) {
-        }
-
-        void push(const std::vector<char>& e) {
-            std::unique_lock<std::mutex> lock(_mut);
-
-            u64 next_size = _queue.size() + e.size();
-
-            if (next_size < _fsize) {
-
-                _queue.insert(_queue.end(), e.begin(), e.end());
-                return;
-            }
-
-            u64 elems_to_remove = next_size - _fsize;
-
-            _queue.erase(_queue.begin(), _queue.begin() + elems_to_remove); //TODO check
-            _queue.insert(_queue.end(), e.begin(), e.end());
-        }
-
-        [[nodiscard]] std::vector<char> pop(u64 count) {
-            std::unique_lock<std::mutex> lock(_mut);
-
-            if (_queue.size() < count)
-                throw runtime_error("queue error to few elemts!");
-
-            std::vector<char> data(_queue.begin(), _queue.begin() + count);
-            _queue.erase(_queue.begin(), _queue.begin() + count);
-            return data;
-
-        }
-
-        [[nodiscard]] u64 how_much_to_retransmit() {
-            std::unique_lock<std::mutex> lock(_mut);
-            return _queue.size();
-        }
-
-    };
-
-
-    void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue> queue, u16 ctrl_port, const struct address& addr) {
+    void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue, u16 ctrl_port, const struct address& addr) {
         cout << "hello from thread\n";
 
         UdpSocket listening_socket{addr, ctrl_port};
@@ -132,7 +87,7 @@ namespace {
         u64 _rtime{};
         u64 _first_byte_enum{};
         atomic<bool> _active{true};
-        shared_ptr<ConcurrentQueue> _retransmission_queue;
+        shared_ptr<ConcurrentQueue<char>> _retransmission_queue;
 
         u64 get_current_first_byte_enum() {
             u64 res = _first_byte_enum;
@@ -154,7 +109,7 @@ namespace {
             _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             // starting listener thread
-            _retransmission_queue = make_shared<ConcurrentQueue>(args.fsize);
+            _retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
             thread listener{listener_thread,
                             std::ref(_active), _retransmission_queue, args.ctrl_port, args.mcast_addr   };
             listener.detach();
@@ -212,6 +167,13 @@ namespace {
                     std::fill(package.begin() + 8, package.end(), 0);
                 }
             }
+
+            if (n == _psize)
+                _socket.send_message(package.data(), _psize);
+
+//            // if readed data is less than psize we drop the last packet
+
+            finish();
 
         }
 
