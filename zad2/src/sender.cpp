@@ -16,6 +16,8 @@
 #include <queue>
 #include <thread>
 #include <mutex>
+#include <optional>
+#include <charconv>
 #include "../include/common.h"
 #include "../include/parsing_helper.h"
 #include "../include/concurrent_structs.h"
@@ -23,6 +25,7 @@
 
 namespace {
     using namespace std;
+    using std::optional;
 
     class Exception : public std::exception
     {
@@ -36,6 +39,58 @@ namespace {
         }
     };
 
+    bool got_lookup(size_t read_len, vector<char>& buffer) {
+        if (read_len <= 0)
+            return false;
+
+        if (strcmp(buffer.data(), "ZERO_SEVEN_COME_IN") == 0) {
+            cout << "we got lookup\n";
+            return true;
+        }
+        return false;
+    }
+
+    bool parseToUInt64(const std::string& str, uint64_t& value) {
+        auto result = std::from_chars(str.data(), str.data() + str.size(), value);
+        return result.ec == std::errc{} && result.ptr == str.data() + str.size();
+    }
+
+
+    // TODO moze dodatkowy scisly  check na znaki asci od 32 do 127
+    optional<vector<u64>> get_ints_from_rexmit(size_t read_len, vector<char>& buffer) {
+        if (read_len <= 0)
+            return {};
+
+        std::string input{buffer.data()};
+
+        cout << "received input: " << input << endl;
+
+        std::regex pattern(R"(LOUDER_PLEASE \[((?:\d+(?:,)?)+)\])");
+        std::smatch matches;
+
+        if (std::regex_search(input, matches, pattern)) {
+            cout << "message ok\n";
+            std::string integersStr = matches[1].str();
+            std::vector<u64> integers;
+
+            std::istringstream iss(integersStr);
+            std::string token;
+            while (std::getline(iss, token, ',')) {
+                uint64_t value;
+                if (parseToUInt64(token, value)) {
+                    integers.push_back(value);
+                } else {
+                    cout << "message look like rexmit but int parsing failed\n";
+                    return {};
+                }
+            }
+
+            return integers;
+        } else {
+            std::cout << "Invalid input format." << std::endl;
+            return {};
+        }
+    }
 
     void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
                          shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
@@ -43,15 +98,28 @@ namespace {
 
         UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
 
+        cout << "mcast addr: \n" << args.mcast_addr.combined.c_str() << endl;
+        cout << "ctrl port: \n" << args.ctrl_port << endl;
+
         vector<char> buffer(1000);
         size_t read_len{};
 
         while (active) {
+            buffer.clear();
             read_len = listening_socket.recv_message(buffer);
+            if (got_lookup(read_len, buffer)) {
+                printf("received: %s \n", buffer.data());
+            }
 
-            // zalozmy ze to rexmit
+            auto ints = get_ints_from_rexmit(read_len, buffer);
 
+            if (ints.has_value()) {
+                printf("received: %s \n", buffer.data());
 
+                for (auto e : ints.value())
+                    cout << e << " ";
+                cout << endl;
+            }
         }
     }
 

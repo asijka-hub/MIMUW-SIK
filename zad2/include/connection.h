@@ -15,7 +15,7 @@ private:
 
         _receiver_addr = get_address(addr.combined.c_str(), port);
 
-        connect_socket(_socket_fd, &_receiver_addr); // TODO usunac connect
+        bind_socket(_socket_fd, port);
     }
 
 public:
@@ -39,7 +39,17 @@ public:
     }
 
     size_t recv_message(std::vector<char>& buffer) {
-        return receive_message(_socket_fd, (void*)buffer.data(), buffer.size(), 0);
+        struct sockaddr_in client_address{};
+        auto address_length = (socklen_t) sizeof(client_address);
+        int flags = 0; // we do not request anything special
+        errno = 0;
+        ssize_t len = recvfrom(_socket_fd, buffer.data(), buffer.capacity(), flags,
+                               (struct sockaddr *) &client_address, &address_length);
+        cout << "read len:" << len << "\n";
+        if (len < 0) {
+            PRINT_ERRNO();
+        }
+        return (size_t) len;
     }
 };
 
