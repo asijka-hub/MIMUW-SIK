@@ -39,11 +39,12 @@ namespace {
         }
     };
 
+    //TODO ogarnac te end of line characters
     bool got_lookup(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return false;
 
-        if (strcmp(buffer.data(), "ZERO_SEVEN_COME_IN") == 0) {
+        if (strcmp(buffer.data(), "ZERO_SEVEN_COME_IN\n") == 0) {
             cout << "we got lookup\n";
             return true;
         }
@@ -57,6 +58,7 @@ namespace {
 
 
     // TODO moze dodatkowy scisly  check na znaki asci od 32 do 127
+    // TODO warunki maja ostatecznie luznie
     optional<vector<u64>> get_ints_from_rexmit(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return {};
@@ -92,7 +94,7 @@ namespace {
         }
     }
 
-    void listener_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
+    void listener_thread(atomic<bool>& active,
                          shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
         cout << "hello from thread\n";
 
@@ -108,17 +110,27 @@ namespace {
             buffer.clear();
             read_len = listening_socket.recv_message(buffer);
             if (got_lookup(read_len, buffer)) {
-                printf("received: %s \n", buffer.data());
+                cout << "GOT LOOK UP\n";
+
+                std::ostringstream oss;
+                string mcast_addr{args.mcast_addr.combined};
+                oss << "BOREWICZ_HERE [" << mcast_addr << "] [" << args.data_port << "] [" << args.name << "]";
+                std::string formatted_str = oss.str();
+
+                std::vector<char> char_vector(formatted_str.begin(), formatted_str.end());
+
+                cout << "message: " << formatted_str << endl;
+
+                listening_socket.send_reply(formatted_str.c_str(), formatted_str.length());
             }
 
             auto ints = get_ints_from_rexmit(read_len, buffer);
 
             if (ints.has_value()) {
-                printf("received: %s \n", buffer.data());
+                cout << "REXMIT\n";
 
                 for (auto e : ints.value())
-                    cout << e << " ";
-                cout << endl;
+                    set->add(e);
             }
         }
     }
@@ -130,7 +142,10 @@ namespace {
         std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
 
         while (active) {
-            // retransmite
+            // TODO
+            auto packet_numbers = set->get_all_reset_set();
+
+
 
 
             std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
@@ -172,7 +187,7 @@ namespace {
             // starting listener thread
 
             thread listener{listener_thread,
-                            std::ref(_active), _retransmission_queue, _first_byte_num_set, ref(args)};
+                            std::ref(_active), _first_byte_num_set, ref(args)};
             listener.detach();
 
             // starting repeater thread
@@ -192,13 +207,13 @@ namespace {
                 first_byte_enum = get_current_first_byte_enum();
                 memcpy(package.data() + 8, &first_byte_enum, 8);
 
-                _socket.send_message(package.data(), _psize);
+                _socket.send_reply(package.data(), _psize);
 
                 std::fill(package.begin() +  8, package.end(), 0);
             }
 
             if (n == _psize)
-                _socket.send_message(package.data(), _psize);
+                _socket.send_reply(package.data(), _psize);
 
             // if readed data is less than psize we drop the last packet
 

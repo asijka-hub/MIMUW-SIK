@@ -69,8 +69,6 @@ public:
 class ConcurrentSet {
 private:
     std::set<u64> _data;
-    std::set<u64> _swapper;
-    std::atomic<bool> _retransmission_is_active{false};
     std::mutex _mut;
 public:
     ConcurrentSet() = default;
@@ -78,18 +76,15 @@ public:
     void add(u64 number) {
         std::unique_lock<std::mutex> lock(_mut);
 
-        if (_retransmission_is_active)
-            _swapper.insert(number);
-        else
-            _data.insert(number);
+        _data.insert(number);
     }
 
-    std::vector<u64> get_all() {
+    std::vector<u64> get_all_reset_set() {
         std::unique_lock<std::mutex> lock(_mut);
 
         std::vector<u64> res{_data.begin(), _data.end()};
-        _data = _swapper;
-        _swapper.clear();
+
+        _data.clear();
 
         return res;
     }

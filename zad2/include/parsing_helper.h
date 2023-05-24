@@ -64,7 +64,7 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
 
     desc.add_options()
             ("help,h", "produce help message")
-            ("a,a", po::value<std::string>(&program_args.mcast_addr.combined)->required(), "broad cast address")
+            ("a,a", po::value<std::string>(&program_args.mcast_addr.combined)->required(), "broadcast address")
             ("P,P", po::value<int>(&data_port)->default_value(DEFAULT_DATA_PORT)->notifier(&check_port),
              "port used for DATA transfer [0-65535]")
             ("C,C", po::value<int>(&ctrl_port)->default_value(DEFAULT_CTRL_PORT)->notifier(&check_port),
