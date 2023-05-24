@@ -95,7 +95,7 @@ namespace {
     }
 
     void listener_thread(atomic<bool>& active,
-                         shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
+                         shared_ptr<ConcurrentSet> set, struct SenderArgs& args) {
         cout << "hello from thread\n";
 
         UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
@@ -157,7 +157,6 @@ namespace {
         UdpSocket _socket;
         std::time_t _session_id{};
         u64 _psize{};
-        u64 _rtime{};
         u64 _first_byte_enum{};
         atomic<bool> _active{true};
         shared_ptr<ConcurrentQueue<char>> _retransmission_queue;
@@ -175,17 +174,28 @@ namespace {
             _active = false;
         }
 
+        vector<char> get_message(vector<char>& buffer) {
+            u64 session_id = __builtin_bswap64(_session_id);
+            u64 first_byte = get_current_first_byte_enum();
+
+            vector<char> res(_psize + 2 * 8);
+
+            memcpy(res.data(), &session_id, 8);
+            memcpy(res.data() + 8, &first_byte, 8);
+            memcpy(res.data() + 16, buffer.data(), _psize);
+        }
+
     public:
         Sender() = delete;
 
         explicit Sender(struct SenderArgs &args) :
-                _socket(args.mcast_addr, args.data_port), _psize(args.psize), _rtime(args.rtime) {
+                _socket(args.mcast_addr, args.data_port), _psize(args.psize) {
             _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             _retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
             _first_byte_num_set = make_shared<ConcurrentSet>();
-            // starting listener thread
 
+            // starting listener thread
             thread listener{listener_thread,
                             std::ref(_active), _first_byte_num_set, ref(args)};
             listener.detach();
@@ -196,31 +206,25 @@ namespace {
         }
 
         void read_and_send() {
-            vector<char> package(_psize + 2 * 8); // extra space for (u64) session_id and (u64) first_byte_enum
+            vector<char> buffer(_psize);
 
-            u64 session_id = __builtin_bswap64(_session_id); // host order to network order swap
-            memcpy(package.data(), &session_id, 8);
-
-            size_t n;
-            u64 first_byte_enum{};
-            while ((n = std::fread(package.data() + 2 * 8, 1, _psize, stdin))) {
-                first_byte_enum = get_current_first_byte_enum();
-                memcpy(package.data() + 8, &first_byte_enum, 8);
-
-                _socket.send_reply(package.data(), _psize);
-
-                std::fill(package.begin() +  8, package.end(), 0);
+            u64 n;
+            while ((n = std::fread(buffer.data() , 1, _psize, stdin))) {
+                auto message = get_message(buffer);
+                _socket.multicast_message(buffer);
             }
 
-            if (n == _psize)
-                _socket.send_reply(package.data(), _psize);
+
+            // TODO sprawdzic czy fread tak dziala
+            if (n == _psize) {
+                auto message = get_message(buffer);
+                _socket.multicast_message(buffer);
+
+            }
 
             // if readed data is less than psize we drop the last packet
-
             finish();
         }
-
-
 
     };
 }

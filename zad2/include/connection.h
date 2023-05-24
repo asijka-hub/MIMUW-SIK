@@ -5,6 +5,8 @@
 #ifndef SIKRADIO_CONNECTION_H
 #define SIKRADIO_CONNECTION_H
 
+#include "common.h"
+
 //class UdpSocket {
 //private:
 //    int socket_fd{};
@@ -52,26 +54,6 @@
 //    }
 //};
 
-inline static struct sockaddr_in get_address(const char *host, uint16_t port) {
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET; // IPv4
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-
-    struct addrinfo *address_result;
-    CHECK(getaddrinfo(host, NULL, &hints, &address_result));
-
-    struct sockaddr_in address;
-    address.sin_family = AF_INET; // IPv4
-    address.sin_addr.s_addr =
-            ((struct sockaddr_in *) (address_result->ai_addr))->sin_addr.s_addr; // IP address
-    address.sin_port = htons(port);
-
-    freeaddrinfo(address_result);
-
-    return address;
-}
 
 class UdpSocket {
 private:
@@ -87,7 +69,7 @@ private:
         }
 
         // set multicast address
-
+        multicast_addr = get_address(_multi_addr.combined.c_str(), _port);
 
         // Join the multicast group
         ip_mreq multicastRequest{};
@@ -127,11 +109,16 @@ public:
         int flags = 0;
         ssize_t sent_length = sendto(socket_fd, msg, length, flags,
                                      (struct sockaddr *) &sender_addr, address_length);
-        ENSURE(sent_length == (ssize_t) length);
+
+        if (sent_length != (ssize_t) length)
+            throw std::runtime_error("send reply failed");
     }
 
     void multicast_message(std::vector<char>& buffer) {
-
+        if (sendto(socket_fd, buffer.data(), buffer.size(), 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
+                   sizeof(multicast_addr)) < 0) {
+            throw std::runtime_error("Failed to multicast message");
+        }
     }
 
     size_t recv_message(std::vector<char>& buffer) {
