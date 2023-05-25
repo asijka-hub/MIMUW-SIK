@@ -23,9 +23,21 @@
 namespace {
     using namespace std;
 
+    void lookup_thread(struct ReceiverArgs& args) {
+
+            UdpSocket lookup_socket(args.dsc_addr, args.ctrl_port);
+
+            string message{"ZERO_SEVEN_COME_IN\n"};
+
+            for(;;) {
+                lookup_socket.multicast_message(message.data(), message.length());
+                cout << "lookup thread: SEND MESSAGE\n";
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+            }
+    }
+
     class Receiver {
     private:
-        UdpSocket socket_fd;
         std::time_t session_id{};
         u64 bsize{};
         u64 rtime{};
@@ -39,14 +51,16 @@ namespace {
     public:
         Receiver() = delete;
 
-        explicit Receiver(struct ReceiverArgs &args) :
-                socket_fd(args.dsc_addr, args.ctrl_port), bsize(args.bsize) {
+        explicit Receiver(struct ReceiverArgs &args) : bsize(args.bsize) {
             session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
+            thread a{lookup_thread, std::ref(args)};
+            a.detach();
         }
 
         void start() {
             cout<<"started receiver\n";
+            while(1) {};
         }
 
     };
@@ -57,9 +71,9 @@ int main(int argc, char **argv) {
     try {
         Receiver receiver{program_args};
         receiver.start();
-    } catch (const std::exception& e) {
-        cerr << "exception occurred\n";
-        return 1;
+    } catch (const std::exception& ex) {
+        // Handle the exception thrown from the thread in the main thread
+        std::cout << "Exception caught in main thread: " << ex.what() << std::endl;
     }
     return 0;
 }

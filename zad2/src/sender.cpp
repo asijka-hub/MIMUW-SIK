@@ -84,12 +84,10 @@ namespace {
 
     void listener_thread(atomic<bool>& active,
                          shared_ptr<ConcurrentSet> set, struct SenderArgs& args) {
-        cout << "hello from thread\n";
+        cout << "LISTENER thread started\n";
 
         UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
-
-        cout << "mcast addr: \n" << args.mcast_addr.combined.c_str() << endl;
-        cout << "ctrl port: \n" << args.ctrl_port << endl;
+        listening_socket.bind_socket();
 
         vector<char> buffer(1000);
         size_t read_len{};
@@ -97,6 +95,7 @@ namespace {
         while (active) {
             buffer.clear();
             read_len = listening_socket.recv_message(buffer);
+            printf("got something: %s\n", buffer.data());
             if (got_lookup(read_len, buffer)) {
                 cout << "GOT LOOK UP\n";
 
@@ -110,6 +109,8 @@ namespace {
                 cout << "message: " << formatted_str << endl;
 
                 listening_socket.send_reply(formatted_str.c_str(), formatted_str.length());
+
+                continue;
             }
 
             auto ints = get_ints_from_rexmit(read_len, buffer);
@@ -125,7 +126,7 @@ namespace {
 
     void repeater_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
                          shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
-        cout << "hello from REPEATER thread\n";
+        cout << "REPEATER thread started\n";
 
         std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
 
@@ -202,13 +203,17 @@ namespace {
             u64 n;
             while ((n = std::fread(buffer.data() , 1, psize, stdin))) {
                 auto message = get_message(buffer);
-                socket_fd.multicast_message(buffer);
+                socket_fd.multicast_message(buffer.data(), buffer.size());
+                cout << "i\n";
             }
+
+            cout << "n: " << n << "\n";
 
             // TODO sprawdzic czy fread tak dziala
             if (n == psize) {
+                cout << "fdsafsafddasfs\n";
                 auto message = get_message(buffer);
-                socket_fd.multicast_message(buffer);
+                socket_fd.multicast_message(buffer.data(), buffer.size());
 
             }
 

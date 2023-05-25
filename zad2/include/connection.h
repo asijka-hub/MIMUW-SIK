@@ -65,7 +65,7 @@ private:
 
     void create_multicast_socket(const struct address& _multi_addr, u16 _port) {
         if ((socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-            throw std::runtime_error("Failed to create socket");
+            throw std::runtime_error("Failed to create socket\n");
         }
 
         // set multicast address
@@ -77,7 +77,7 @@ private:
         multicastRequest.imr_interface.s_addr = htonl(INADDR_ANY);
 
         if (setsockopt(socket_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &multicastRequest, sizeof(multicastRequest)) < 0) {
-            throw std::runtime_error("Failed to join multicast group");
+            throw std::runtime_error("Failed to join multicast group\n");
         }
     }
 
@@ -114,8 +114,8 @@ public:
             throw std::runtime_error("send reply failed");
     }
 
-    void multicast_message(std::vector<char>& buffer) {
-        if (sendto(socket_fd, buffer.data(), buffer.size(), 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
+    void multicast_message(char* msg, size_t n) {
+        if (sendto(socket_fd, msg, n, 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
                    sizeof(multicast_addr)) < 0) {
             throw std::runtime_error("Failed to multicast message");
         }

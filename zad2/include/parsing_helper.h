@@ -89,9 +89,9 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
         exit(1);
     }
 
-    cout << "name: " << program_args.name << "a" << std::endl;
+//    cout << "name: " << program_args.name << "a" << std::endl;
 
-    if (program_args.name.empty()) {
+    if (program_args.name.empty()) { // TODO
         cout << "WTF\n";
         exit(1);
     }
