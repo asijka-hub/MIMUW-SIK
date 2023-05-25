@@ -25,23 +25,23 @@ namespace {
 
     class Receiver {
     private:
-        UdpSocket _socket;
-        std::time_t _session_id{};
-        u64 _bsize{};
-        u64 _rtime{};
-        u64 _first_byte_enum{};
-        atomic<bool> _active{true};
+        UdpSocket socket_fd;
+        std::time_t session_id{};
+        u64 bsize{};
+        u64 rtime{};
+        u64 first_byte_enum{};
+        atomic<bool> active{true};
 
         void finish() {
-            _active = false;
+            active = false;
         }
 
     public:
         Receiver() = delete;
 
         explicit Receiver(struct ReceiverArgs &args) :
-                _socket(args.dsc_addr, args.ctrl_port), _bsize(args.bsize) {
-            _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                socket_fd(args.dsc_addr, args.ctrl_port), bsize(args.bsize) {
+            session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
         }
 
@@ -54,9 +54,12 @@ namespace {
 
 int main(int argc, char **argv) {
     struct ReceiverArgs program_args = parse_receiver_args(argc, argv);
-
-    Receiver receiver{program_args};
-    receiver.start();
-
+    try {
+        Receiver receiver{program_args};
+        receiver.start();
+    } catch (const std::exception& e) {
+        cerr << "exception occurred\n";
+        return 1;
+    }
     return 0;
 }

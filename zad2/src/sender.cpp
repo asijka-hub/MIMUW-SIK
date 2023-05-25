@@ -27,18 +27,6 @@ namespace {
     using namespace std;
     using std::optional;
 
-    class Exception : public std::exception
-    {
-        std::string _msg;
-    public:
-        explicit Exception(std::string  msg) : _msg(std::move(msg)){}
-
-        [[nodiscard]] const char* what() const noexcept override
-        {
-            return _msg.c_str();
-        }
-    };
-
     //TODO ogarnac te end of line characters
     bool got_lookup(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
@@ -154,71 +142,73 @@ namespace {
 
     class Sender {
     private:
-        UdpSocket _socket;
-        std::time_t _session_id{};
-        u64 _psize{};
-        u64 _first_byte_enum{};
-        atomic<bool> _active{true};
-        shared_ptr<ConcurrentQueue<char>> _retransmission_queue;
-        shared_ptr<ConcurrentSet> _first_byte_num_set;
+        UdpSocket socket_fd;
+        std::time_t session_id{};
+        u64 psize{};
+        u64 first_byte_enum{};
+        atomic<bool> active{true};
+        shared_ptr<ConcurrentQueue<char>> retransmission_queue;
+        shared_ptr<ConcurrentSet> first_byte_num_set;
 
         u64 get_current_first_byte_enum() {
-            u64 res = _first_byte_enum;
-            res = __builtin_bswap64(res);
-            _first_byte_enum += _psize;
+            u64 res = first_byte_enum;
+            res = htole64(res);
+            first_byte_enum += psize;
 
             return res;
         }
 
         void finish() {
-            _active = false;
+            active = false;
         }
 
+        // TODO zmienic moze na char[] i bez dodatkowej funkcji
         vector<char> get_message(vector<char>& buffer) {
-            u64 session_id = __builtin_bswap64(_session_id);
+            u64 id = htobe64(session_id);
             u64 first_byte = get_current_first_byte_enum();
 
-            vector<char> res(_psize + 2 * 8);
+            vector<char> res(psize + 2 * 8);
 
-            memcpy(res.data(), &session_id, 8);
+            memcpy(res.data(), &id, 8);
             memcpy(res.data() + 8, &first_byte, 8);
-            memcpy(res.data() + 16, buffer.data(), _psize);
+            memcpy(res.data() + 16, buffer.data(), psize);
+
+            return res;
         }
 
     public:
         Sender() = delete;
 
         explicit Sender(struct SenderArgs &args) :
-                _socket(args.mcast_addr, args.data_port), _psize(args.psize) {
-            _session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
+                socket_fd(args.mcast_addr, args.data_port), psize(args.psize) {
+            session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
-            _retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
-            _first_byte_num_set = make_shared<ConcurrentSet>();
+            retransmission_queue = make_shared<ConcurrentQueue<char>>(args.fsize);
+            first_byte_num_set = make_shared<ConcurrentSet>();
 
             // starting listener thread
             thread listener{listener_thread,
-                            std::ref(_active), _first_byte_num_set, ref(args)};
+                            std::ref(active), first_byte_num_set, ref(args)};
             listener.detach();
 
             // starting repeater thread
-            thread repeater{repeater_thread, std::ref(_active), _retransmission_queue, _first_byte_num_set, ref(args)};
+            thread repeater{repeater_thread, std::ref(active), retransmission_queue, first_byte_num_set, ref(args)};
             repeater.detach();
         }
 
         void read_and_send() {
-            vector<char> buffer(_psize);
+            vector<char> buffer(psize);
 
             u64 n;
-            while ((n = std::fread(buffer.data() , 1, _psize, stdin))) {
+            while ((n = std::fread(buffer.data() , 1, psize, stdin))) {
                 auto message = get_message(buffer);
-                _socket.multicast_message(buffer);
+                socket_fd.multicast_message(buffer);
             }
 
-
             // TODO sprawdzic czy fread tak dziala
-            if (n == _psize) {
+            if (n == psize) {
                 auto message = get_message(buffer);
-                _socket.multicast_message(buffer);
+                socket_fd.multicast_message(buffer);
 
             }
 
@@ -231,9 +221,12 @@ namespace {
 
 int main(int argc, char **argv) {
     struct SenderArgs program_args = parse_sender_args(argc, argv);
-
-    Sender sender{program_args};
-    sender.read_and_send();
-
+    try {
+        Sender sender{program_args};
+        sender.read_and_send();
+    } catch (const std::exception& e) {
+        cerr << "exception occurred\n";
+        return 1;
+    }
     return 0;
 }

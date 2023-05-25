@@ -32,7 +32,7 @@ namespace po = boost::program_options;
 
 
 void check_positive(auto number) {
-    if (number < 0)
+    if (number <= 0)
         throw po::validation_error(po::validation_error::invalid_option_value);
 }
 
@@ -72,7 +72,7 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
             ("p,p", po::value<i64>(&psize)->default_value(DEFAULT_PSIZE)->notifier(&check_positive<i64>), "size of audio_data > 0")
             ("f,f", po::value<i64>(&fsize)->default_value(DEFAULT_FSIZE)->notifier(&check_positive<i64>), "size of fifo queue > 0")
             ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0")
-            ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "server address");
+            ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "name");
 
     try {
         po::variables_map vm;
@@ -88,6 +88,14 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
         std::cerr << e.what() << std::endl;
         exit(1);
     }
+
+    cout << "name: " << program_args.name << "a" << std::endl;
+
+    if (program_args.name.empty()) {
+        cout << "WTF\n";
+        exit(1);
+    }
+
 
     program_args.data_port = static_cast<u16>(data_port);
     program_args.ctrl_port = static_cast<u16>(ctrl_port);
