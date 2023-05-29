@@ -7,54 +7,6 @@
 
 #include "common.h"
 
-//class UdpSocket {
-//private:
-//    int socket_fd{};
-//    struct sockaddr_in sender_addr{};
-//
-//
-//    void create_socket(const struct address& addr, u16 port) {
-//        socket_fd = open_socket();
-//
-////        _receiver_addr = get_address(addr.combined.c_str(), port);
-//
-//        bind_socket(socket_fd, port);
-//    }
-//
-//public:
-//    UdpSocket() = delete;
-//
-//    UdpSocket(const struct address& addr, u16 port) {
-//        create_socket(addr, port);
-//    }
-//
-//    ~UdpSocket() {
-//        close(socket_fd);
-//    }
-//
-//    void send_reply(const char* msg, size_t length) const {
-//        auto address_length = (socklen_t) sizeof(sender_addr);
-//        int flags = 0;
-//        ssize_t sent_length = sendto(socket_fd, msg, length, flags,
-//                                     (struct sockaddr *) &sender_addr, address_length);
-//        ENSURE(sent_length == (ssize_t) length);
-//    }
-//
-//    size_t recv_message(std::vector<char>& buffer) {
-//        auto address_length = (socklen_t) sizeof(sender_addr);
-//        int flags = 0; // we do not request anything special
-//        errno = 0;
-//        ssize_t len = recvfrom(socket_fd, buffer.data(), buffer.capacity(), flags,
-//                               (struct sockaddr *) &sender_addr, &address_length);
-//        cout << "read len:" << len << "\n";
-//        if (len < 0) {
-//            PRINT_ERRNO();
-//        }
-//        return (size_t) len;
-//    }
-//};
-
-
 class UdpSocket {
 private:
     int socket_fd{};
@@ -101,6 +53,17 @@ public:
 
         if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
             throw std::runtime_error("Failed to bind socket");
+        }
+    }
+
+    void bind_to_random() const {
+        sockaddr_in address{};
+        address.sin_family = AF_INET;
+        address.sin_addr.s_addr = htonl(INADDR_ANY);
+        address.sin_port = 0;
+
+        if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
+            throw std::runtime_error("Failed to bind socket to random port");
         }
     }
 

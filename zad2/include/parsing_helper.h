@@ -89,13 +89,12 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
         exit(1);
     }
 
-//    cout << "name: " << program_args.name << "a" << std::endl;
 
-    if (program_args.name.empty()) { // TODO
-        cout << "WTF\n";
-        exit(1);
-    }
+    if (program_args.name.empty())
+        throw std::runtime_error("name empty\n");
 
+    if (program_args.name == "\"\"")
+        throw std::runtime_error("not accepted name\n");
 
     program_args.data_port = static_cast<u16>(data_port);
     program_args.ctrl_port = static_cast<u16>(ctrl_port);
@@ -112,6 +111,7 @@ struct ReceiverArgs {
     u16 ui_port{};
     u64 bsize{};
     u64 rtime{};
+    std::string name;
 };
 
 struct ReceiverArgs parse_receiver_args(int argc, char **argv) {
@@ -129,7 +129,9 @@ struct ReceiverArgs parse_receiver_args(int argc, char **argv) {
             ("U,U", po::value<int>(&ui_port)->default_value(DEFAULT_UI_PORT)->notifier(&check_port),
              "port used for CONTROL data transfer [0-65535]")
             ("b,b", po::value<i64>(&bsize)->default_value(DEFAULT_BSIZE)->notifier(&check_positive<i64>), "size of audio_data > 0")
-            ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0");
+            ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0")
+            ("n,n", po::value<std::string>(&program_args.name), "name");
+
 
     try {
         po::variables_map vm;

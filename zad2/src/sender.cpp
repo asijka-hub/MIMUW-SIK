@@ -22,6 +22,8 @@
 #include "../include/parsing_helper.h"
 #include "../include/concurrent_structs.h"
 #include "../include/connection.h"
+#include "../include/utils.h"
+
 
 namespace {
     using namespace std;
@@ -39,10 +41,6 @@ namespace {
         return false;
     }
 
-    bool parseToUInt64(const std::string& str, uint64_t& value) {
-        auto result = std::from_chars(str.data(), str.data() + str.size(), value);
-        return result.ec == std::errc{} && result.ptr == str.data() + str.size();
-    }
 
 
     // TODO moze dodatkowy scisly  check na znaki asci od 32 do 127
@@ -67,7 +65,7 @@ namespace {
             std::string token;
             while (std::getline(iss, token, ',')) {
                 uint64_t value;
-                if (parseToUInt64(token, value)) {
+                if (parse_to_uint_T<u64>(token, value)) {
                     integers.push_back(value);
                 } else {
                     cout << "message look like rexmit but int parsing failed\n";
@@ -106,7 +104,7 @@ namespace {
 
                 std::vector<char> char_vector(formatted_str.begin(), formatted_str.end());
 
-                cout << "message: " << formatted_str << endl;
+                cout << "message send: " << formatted_str << endl;
 
                 listening_socket.send_reply(formatted_str.c_str(), formatted_str.length());
 
@@ -200,21 +198,10 @@ namespace {
         void read_and_send() {
             vector<char> buffer(psize);
 
-            u64 n;
-            while ((n = std::fread(buffer.data() , 1, psize, stdin))) {
+            while (std::fread(buffer.data() , 1, psize, stdin) == psize) {
                 auto message = get_message(buffer);
                 socket_fd.multicast_message(buffer.data(), buffer.size());
                 cout << "i\n";
-            }
-
-            cout << "n: " << n << "\n";
-
-            // TODO sprawdzic czy fread tak dziala
-            if (n == psize) {
-                cout << "fdsafsafddasfs\n";
-                auto message = get_message(buffer);
-                socket_fd.multicast_message(buffer.data(), buffer.size());
-
             }
 
             // if readed data is less than psize we drop the last packet
@@ -225,12 +212,12 @@ namespace {
 }
 
 int main(int argc, char **argv) {
-    struct SenderArgs program_args = parse_sender_args(argc, argv);
     try {
+        struct SenderArgs program_args = parse_sender_args(argc, argv);
         Sender sender{program_args};
         sender.read_and_send();
     } catch (const std::exception& e) {
-        cerr << "exception occurred\n";
+        cerr << e.what();
         return 1;
     }
     return 0;
