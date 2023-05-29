@@ -81,7 +81,7 @@ namespace {
     }
 
     void listener_thread(atomic<bool>& active,
-                         shared_ptr<ConcurrentSet> set, struct SenderArgs& args) {
+                         shared_ptr<ConcurrentSet>& set, struct SenderArgs& args) {
         cout << "LISTENER thread started\n";
 
         UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
@@ -95,7 +95,6 @@ namespace {
             read_len = listening_socket.recv_message(buffer);
             printf("got something: %s\n", buffer.data());
             if (got_lookup(read_len, buffer)) {
-                cout << "GOT LOOK UP\n";
 
                 std::ostringstream oss;
                 string mcast_addr{args.mcast_addr.combined};
@@ -122,8 +121,8 @@ namespace {
         }
     }
 
-    void repeater_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>> queue,
-                         shared_ptr<ConcurrentSet> set, struct SenderArgs args) {
+    void repeater_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue<char>>& queue,
+                         shared_ptr<ConcurrentSet>& set, struct SenderArgs& args) {
         cout << "REPEATER thread started\n";
 
         std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
@@ -187,11 +186,12 @@ namespace {
 
             // starting listener thread
             thread listener{listener_thread,
-                            std::ref(active), first_byte_num_set, ref(args)};
+                            std::ref(active), std::ref(first_byte_num_set), ref(args)};
             listener.detach();
 
             // starting repeater thread
-            thread repeater{repeater_thread, std::ref(active), retransmission_queue, first_byte_num_set, ref(args)};
+            thread repeater{repeater_thread,
+                            std::ref(active), std::ref(retransmission_queue), std::ref(first_byte_num_set), ref(args)};
             repeater.detach();
         }
 

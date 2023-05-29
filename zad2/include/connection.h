@@ -88,6 +88,8 @@ public:
         auto address_length = (socklen_t) sizeof(sender_addr);
         int flags = 0; // we do not request anything special
 
+
+        // TODO buffer size na datagram size
         ssize_t len = recvfrom(socket_fd, buffer.data(), buffer.capacity(), flags,
                                (struct sockaddr *) &sender_addr, &address_length);
         cout << "read len:" << len << "\n";

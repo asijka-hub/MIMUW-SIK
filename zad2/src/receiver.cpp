@@ -34,6 +34,7 @@ namespace {
         while(active) {
             socket.multicast_message(message.data(), message.length());
             cout << "lookup thread: SEND MESSAGE\n";
+            cout << "\n";
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -46,7 +47,7 @@ namespace {
 
         cout << "received input: " << input << endl;
 
-        std::regex regex(R"(BOREWICZ_HERE ((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})) (\d{1,5}) (.+))");
+        std::regex regex(R"(BOREWICZ_HERE \[((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}))\] \[(\d{1,5})\] \[(.+)\])");
         std::smatch match;
 
         if (std::regex_match(input, match, regex)) {
@@ -61,6 +62,7 @@ namespace {
             std::cout << "IP Address: " << ip_address << std::endl;
             std::cout << "Port: " << port << std::endl;
             std::cout << "Message: " << name << std::endl;
+            cout << "\n";
 
             auto tuple = make_tuple(ip_address, port, name);
 
@@ -68,14 +70,14 @@ namespace {
 
         } else {
             std::cout << "Invalid input format." << std::endl;
+            cout << "\n";
+
             return {};
         }
     }
 
     void reply_thread(atomic<bool>& active, UdpSocket& socket, GuiHandler& guiHandler) {
         cout << "REPLY thread started\n";
-
-        socket.bind_to_random();
 
         vector<char> buffer(1000);
         size_t read_len{};
@@ -114,6 +116,8 @@ namespace {
         explicit Receiver(struct ReceiverArgs &args) : bsize(args.bsize)
                 , lookup_reply_socket(args.dsc_addr, args.ctrl_port) {
             session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
+
+            lookup_reply_socket.bind_to_random();
 
             thread lookup{lookup_thread, std::ref(active), std::ref(lookup_reply_socket)};
             lookup.detach();
