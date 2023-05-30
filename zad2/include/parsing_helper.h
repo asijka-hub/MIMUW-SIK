@@ -89,12 +89,14 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
         exit(1);
     }
 
-
     if (program_args.name.empty())
         throw std::runtime_error("name empty\n");
 
     if (program_args.name == "\"\"")
         throw std::runtime_error("not accepted name\n");
+
+    if (program_args.name.size() > 64)
+        throw std::runtime_error("name to long\n");
 
     program_args.data_port = static_cast<u16>(data_port);
     program_args.ctrl_port = static_cast<u16>(ctrl_port);
@@ -130,7 +132,7 @@ struct ReceiverArgs parse_receiver_args(int argc, char **argv) {
              "port used for CONTROL data transfer [0-65535]")
             ("b,b", po::value<i64>(&bsize)->default_value(DEFAULT_BSIZE)->notifier(&check_positive<i64>), "size of audio_data > 0")
             ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0")
-            ("n,n", po::value<std::string>(&program_args.name), "name");
+            ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "name");
 
 
     try {
@@ -147,6 +149,15 @@ struct ReceiverArgs parse_receiver_args(int argc, char **argv) {
         std::cerr << e.what() << std::endl;
         exit(1);
     }
+
+    if (program_args.name.empty())
+        throw std::runtime_error("name empty\n");
+
+    if (program_args.name == "\"\"")
+        throw std::runtime_error("not accepted name\n");
+
+    if (program_args.name.size() > 64)
+        throw std::runtime_error("name to long\n");
 
     program_args.ctrl_port = static_cast<u16>(ctrl_port);
     program_args.ui_port = static_cast<u16>(ui_port);

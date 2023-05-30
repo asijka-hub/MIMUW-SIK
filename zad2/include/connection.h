@@ -5,7 +5,39 @@
 #ifndef SIKRADIO_CONNECTION_H
 #define SIKRADIO_CONNECTION_H
 
-#include "common.h"
+//#include "common.h"
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <cstdio>
+#include <cstring>
+#include <unistd.h>
+#include <cstdint>
+#include <arpa/inet.h>
+#include <csignal>
+
+
+struct sockaddr_in get_address(const char *host, uint16_t port) {
+    struct addrinfo hints;
+    memset(&hints, 0, sizeof(struct addrinfo));
+    hints.ai_family = AF_INET; // IPv4
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+
+    struct addrinfo *address_result;
+    if (getaddrinfo(host, NULL, &hints, &address_result) != 0)
+        throw std::runtime_error("get address failed\n");
+
+    struct sockaddr_in address;
+    address.sin_family = AF_INET; // IPv4
+    address.sin_addr.s_addr =
+            ((struct sockaddr_in *) (address_result->ai_addr))->sin_addr.s_addr; // IP address
+    address.sin_port = htons(port);
+
+    freeaddrinfo(address_result);
+
+    return address;
+}
 
 class UdpSocket {
 private:
@@ -68,23 +100,34 @@ public:
     }
 
     void send_reply(const char* msg, size_t length) const {
+        errno = 0;
         auto address_length = (socklen_t) sizeof(sender_addr);
         int flags = 0;
-        ssize_t sent_length = sendto(socket_fd, msg, length, flags,
+        ssize_t err = sendto(socket_fd, msg, length, flags,
                                      (struct sockaddr *) &sender_addr, address_length);
 
-        if (sent_length != (ssize_t) length)
+        if (err < 0 && (errno == ENETDOWN || errno == ENETUNREACH)) {
+            return;
+        } else if (err < 0) {
             throw std::runtime_error("send reply failed");
+        }
     }
 
     void multicast_message(char* msg, size_t n) {
-        if (sendto(socket_fd, msg, n, 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
-                   sizeof(multicast_addr)) < 0) {
+        errno = 0;
+        auto err = sendto(socket_fd, msg, n, 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
+                          sizeof(multicast_addr));
+
+        if (err < 0 && (errno == ENETDOWN || errno == ENETUNREACH)) {
+            return;
+        } else if (err < 0) {
             throw std::runtime_error("Failed to multicast message");
         }
     }
 
-    size_t recv_message(std::vector<char>& buffer) {
+    i64 recv_message(std::vector<char>& buffer) {
+        errno = 0;
+
         auto address_length = (socklen_t) sizeof(sender_addr);
         int flags = 0; // we do not request anything special
 
@@ -94,11 +137,13 @@ public:
                                (struct sockaddr *) &sender_addr, &address_length);
         cout << "read len:" << len << "\n";
 
-        if (len < 0) {
-            throw std::runtime_error("Failed to receive message");
+        if (len < 0 && (errno == ENETDOWN || errno == ENETUNREACH)) {
+            return -1;
+        } else if (len < 0) {
+            throw std::runtime_error("send reply failed");
         }
 
-        return (size_t) len;
+        return len;
     }
 };
 

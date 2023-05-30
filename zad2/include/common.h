@@ -52,26 +52,26 @@ inline static char *get_ip_from_socket(int socket_fd) {
     return get_ip(&address);
 }
 
-inline static struct sockaddr_in get_address(const char *host, uint16_t port) {
-    struct addrinfo hints;
-    memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_INET; // IPv4
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_protocol = IPPROTO_TCP;
-
-    struct addrinfo *address_result;
-    CHECK(getaddrinfo(host, NULL, &hints, &address_result));
-
-    struct sockaddr_in address;
-    address.sin_family = AF_INET; // IPv4
-    address.sin_addr.s_addr =
-            ((struct sockaddr_in *) (address_result->ai_addr))->sin_addr.s_addr; // IP address
-    address.sin_port = htons(port);
-
-    freeaddrinfo(address_result);
-
-    return address;
-}
+//inline static struct sockaddr_in get_address(const char *host, uint16_t port) {
+//    struct addrinfo hints;
+//    memset(&hints, 0, sizeof(struct addrinfo));
+//    hints.ai_family = AF_INET; // IPv4
+//    hints.ai_socktype = SOCK_STREAM;
+//    hints.ai_protocol = IPPROTO_TCP;
+//
+//    struct addrinfo *address_result;
+//    CHECK(getaddrinfo(host, NULL, &hints, &address_result));
+//
+//    struct sockaddr_in address;
+//    address.sin_family = AF_INET; // IPv4
+//    address.sin_addr.s_addr =
+//            ((struct sockaddr_in *) (address_result->ai_addr))->sin_addr.s_addr; // IP address
+//    address.sin_port = htons(port);
+//
+//    freeaddrinfo(address_result);
+//
+//    return address;
+//}
 
 inline static int open_socket() {
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);

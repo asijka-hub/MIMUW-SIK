@@ -80,20 +80,30 @@ namespace {
         cout << "REPLY thread started\n";
 
         vector<char> buffer(1000);
-        size_t read_len{};
 
         while(active) {
             buffer.clear();
-            read_len = socket.recv_message(buffer);
+            auto read_len = socket.recv_message(buffer);
+
+            if (read_len < 0)
+                continue;
 
             auto reply = get_reply(read_len, buffer);
+            auto rec_time = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             if (reply.has_value()) {
+                guiHandler.add_station(reply.value(), rec_time);
                 cout << "GOT REPLY\n";
                 continue;
             }
 
         }
+    }
+
+    void ui_thread(atomic<bool>& active, GuiHandler& guiHandler) {
+        cout << "UI thread started\n";
+
+
     }
 
     class Receiver {
@@ -124,6 +134,9 @@ namespace {
 
             thread reply{reply_thread, std::ref(active), std::ref(lookup_reply_socket), std::ref(guiHandler)};
             reply.detach();
+
+            thread ui{ui_thread, std::ref(active), std::ref(guiHandler)};
+            ui.detach();
         }
 
         void start() {
@@ -135,13 +148,12 @@ namespace {
 }
 
 int main(int argc, char **argv) {
-    struct ReceiverArgs program_args = parse_receiver_args(argc, argv);
     try {
+        struct ReceiverArgs program_args = parse_receiver_args(argc, argv);
         Receiver receiver{program_args};
         receiver.start();
-    } catch (const std::exception& ex) {
-        // Handle the exception thrown from the thread in the main thread
-        std::cout << "Exception caught in main thread: " << ex.what() << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << e.what() << std::endl;
         return 1;
     }
     return 0;
