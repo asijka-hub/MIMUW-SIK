@@ -72,8 +72,9 @@ namespace {
     void listener_thread(atomic<bool>& active,
                          shared_ptr<ConcurrentSet>& set, struct SenderArgs& args) {
 
-        UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
-        listening_socket.bind_socket();
+        UdpSocket listening_socket{};
+        listening_socket.bind_socket(args.ctrl_port);
+        listening_socket.set_broadcast();
 
         vector<char> buffer(1000);
 
@@ -85,6 +86,8 @@ namespace {
                 continue;
 
             if (got_lookup(read_len, buffer)) {
+                cout << "received LOOKUP\n";
+
                 std::ostringstream oss;
                 string mcast_addr{args.mcast_addr.combined};
                 oss << "BOREWICZ_HERE [" << mcast_addr << "] [" << args.data_port << "] [" << args.name << "]";
@@ -127,7 +130,7 @@ namespace {
                 memcpy(buffer.data() + 8, &packet_number, 8);
                 memcpy(buffer.data() + 2 * 8, packet.data(), psize);
 
-                socket.multicast_message(packet.data(), packet.size());
+                socket.send_message(packet.data(), packet.size());
             }
 
             std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
@@ -136,7 +139,7 @@ namespace {
 
     class Sender {
     private:
-        UdpSocket socket_fd;
+        UdpSocket sending_socket;
         std::time_t session_id{};
         u64 psize{};
         u64 first_byte_enum{};
@@ -160,7 +163,9 @@ namespace {
         Sender() = delete;
 
         explicit Sender(struct SenderArgs &args) :
-                socket_fd(args.mcast_addr, args.data_port), psize(args.psize) {
+                sending_socket(), psize(args.psize) {
+            sending_socket.join_multicast(args.mcast_addr, args.data_port);
+
             session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             retransmission_queue = make_shared<ConcurrentQueue>(args.fsize, args.psize);
@@ -174,11 +179,13 @@ namespace {
             // starting repeater thread
             thread repeater{repeater_thread,
                             std::ref(active), std::ref(retransmission_queue),
-                            std::ref(first_byte_num_set), ref(args), ref(socket_fd), session_id};
+                            std::ref(first_byte_num_set), ref(args), ref(sending_socket), session_id};
             repeater.detach();
         }
 
         void read_and_send() {
+            cout<<"started SENDER\n";
+
             vector<char> buffer(psize + 2 * 8);
 
             u64 id = htobe64(session_id);
@@ -191,7 +198,7 @@ namespace {
                 u64 first_byte = get_current_first_byte_enum();
                 memcpy(buffer.data() + 8, &first_byte, 8);
 
-                socket_fd.multicast_message(buffer.data(), buffer.size());
+                sending_socket.send_message(buffer.data(), buffer.size());
             }
 
             // if readed data is less than psize we drop the last packet

@@ -73,7 +73,7 @@ inline static char *get_ip_from_socket(int socket_fd) {
 //    return address;
 //}
 
-inline static int open_socket() {
+inline static int open_udp_socket() {
     int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (socket_fd < 0) {
         PRINT_ERRNO();

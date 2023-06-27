@@ -17,7 +17,7 @@
 #include <thread>
 #include <optional>
 #include <mutex>
-#include "../include/common.h"
+//#include "../include/common.h"
 #include "../include/parsing_helper.h"
 #include "../include/connection.h"
 #include "../include/gui_handler.h"
@@ -30,7 +30,7 @@ namespace {
         string message{"ZERO_SEVEN_COME_IN\n"};
 
         while(active) {
-            socket.multicast_message(message.data(), message.length());
+            socket.send_message(message.data(), message.length());
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -74,6 +74,8 @@ namespace {
             auto rec_time = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             if (reply.has_value()) {
+                cout << "received BOREWICZ\n";
+
                 guiHandler.add_station(reply.value(), rec_time);
                 continue;
             }
@@ -81,7 +83,54 @@ namespace {
         }
     }
 
-    void ui_thread([[maybe_unused]] atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler) {
+    void ui_thread([[maybe_unused]] atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler, u16 ui_port) {
+        int socket_fd = open_tcp_socket();
+        bind_socket_port(socket_fd, ui_port);
+
+        int queue_length = 5;
+
+        int err = listen(socket_fd, queue_length);
+
+        if (err != 0) {
+            cout << "err: " << err << endl;
+            throw std::runtime_error("listening failed\n");
+        }
+
+        const int buffer_size = 1000000;
+        char buffer[buffer_size];
+
+        for (;;) {
+            memset(buffer, 0, buffer_size);
+            struct sockaddr_in client_address;
+            int client_fd = accept_connection(socket_fd, &client_address);
+            char *client_ip = inet_ntoa(client_address.sin_addr);
+            // We don't need to free this,
+            // it is a pointer to a static buffer.
+
+            uint16_t client_port = ntohs(client_address.sin_port);
+            printf("Accepted connection from %s:%d\n", client_ip, client_port);
+
+            // Reading needs to be done in a loop, because:
+            // 1. the client may send a message that is larger than the buffer
+            // 2. a single read() call may not read the entire message, even if it fits in the buffer
+            // 3. in general, there is no rule that for each client's write(), there will be a corresponding read()
+            size_t read_length;
+            do {
+                int flags = 0;
+                read_length = receive_message(client_fd, buffer, buffer_size, flags);
+                if (read_length > 0) {
+                    printf("Received %zd bytes from client %s:%u: \n", read_length, client_ip, client_port,
+                           (int) read_length); // note: we specify the length of the printed string
+//                send_message(client_fd, buffer, read_length, flags);
+//                printf("Sent %zd bytes to client %s:%u\n", read_length, client_ip, client_port);
+                }
+            } while (read_length > 0);
+
+            printf("Closing connection\n");
+            if (close(client_fd) != 0)
+
+                throw std::runtime_error("closing connection failed\n");
+        }
     }
 
     class Receiver {
@@ -102,10 +151,12 @@ namespace {
         Receiver() = delete;
 
         explicit Receiver(struct ReceiverArgs &args) : bsize(args.bsize)
-                , lookup_reply_socket(args.dsc_addr, args.ctrl_port) {
+                , lookup_reply_socket() {
             session_id = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             lookup_reply_socket.bind_to_random();
+            lookup_reply_socket.set_broadcast();
+            lookup_reply_socket.set_destination_addr(args.dsc_addr, args.ctrl_port);
 
             thread lookup{lookup_thread, std::ref(active), std::ref(lookup_reply_socket)};
             lookup.detach();
@@ -113,12 +164,12 @@ namespace {
             thread reply{reply_thread, std::ref(active), std::ref(lookup_reply_socket), std::ref(guiHandler)};
             reply.detach();
 
-            thread ui{ui_thread, std::ref(active), std::ref(guiHandler)};
+            thread ui{ui_thread, std::ref(active), std::ref(guiHandler), args.ui_port};
             ui.detach();
         }
 
         void start() {
-            cout<<"started receiver\n";
+            cout<<"started RECEIVER\n";
             while(1) {};
         }
 

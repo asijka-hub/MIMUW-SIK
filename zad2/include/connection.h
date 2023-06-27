@@ -39,21 +39,71 @@ struct sockaddr_in get_address(const char *host, uint16_t port) {
     return address;
 }
 
+int open_udp_socket() {
+    int fd;
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+        throw std::runtime_error("Failed to create socket\n");
+
+    return fd;
+}
+
+int open_tcp_socket() {
+    int fd;
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+        throw std::runtime_error("Failed to create socket\n");
+
+    return fd;
+}
+
+void bind_socket_port(int socket_fd, uint16_t port) {
+    struct sockaddr_in server_address;
+    server_address.sin_family = AF_INET; // IPv4
+    server_address.sin_addr.s_addr = htonl(INADDR_ANY); // listening on all interfaces
+    server_address.sin_port = htons(port);
+
+    if (bind(socket_fd, (struct sockaddr *) &server_address,
+                     (socklen_t) sizeof(server_address)) != 0)
+        throw std::runtime_error("binding socket failed\n");
+}
+
+int accept_connection(int socket_fd, struct sockaddr_in *client_address) {
+    socklen_t client_address_length = (socklen_t) sizeof(*client_address);
+
+    int client_fd = accept(socket_fd, (struct sockaddr *) client_address, &client_address_length);
+    if (client_fd < 0) {
+        throw std::runtime_error("accepting connection failed\n");
+    }
+
+    return client_fd;
+}
+
+inline static size_t receive_message(int socket_fd, void *buffer, size_t max_length, int flags) {
+    errno = 0;
+    ssize_t received_length = recv(socket_fd, buffer, max_length, flags);
+    if (received_length < 0) {
+        throw std::runtime_error("receiving message failed\n");
+    }
+    return (size_t) received_length;
+}
+
 class UdpSocket {
 private:
     int socket_fd{};
-    u16 port;
     struct sockaddr_in sender_addr{};
-    struct sockaddr_in multicast_addr{};
+    struct sockaddr_in dst_addr{};
 
+public:
+    UdpSocket() {
+        socket_fd = open_udp_socket();
+    }
 
-    void create_multicast_socket(const struct address& _multi_addr, u16 _port) {
-        if ((socket_fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
-            throw std::runtime_error("Failed to create socket\n");
-        }
+    ~UdpSocket() {
+        close(socket_fd);
+    }
 
+    void join_multicast(const struct address& _multi_addr, u16 _port) {
         // set multicast address
-        multicast_addr = get_address(_multi_addr.combined.c_str(), _port);
+        dst_addr = get_address(_multi_addr.combined.c_str(), _port);
 
         // Join the multicast group
         ip_mreq multicastRequest{};
@@ -65,38 +115,23 @@ private:
         }
     }
 
-public:
-    UdpSocket() = delete;
-
-    UdpSocket(const struct address& _multi_addr, u16 _port) : port(_port) {
-        create_multicast_socket(_multi_addr, _port);
-    }
-
-    ~UdpSocket() {
-        close(socket_fd);
-    }
-
-    void bind_socket() const {
-        // Bind the socket to the specified port
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_ANY);
-        address.sin_port = htons(port);
-
-        if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
-            throw std::runtime_error("Failed to bind socket");
+    void set_broadcast() const {
+        int broadcastEnable = 1;
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_BROADCAST, &broadcastEnable, sizeof(broadcastEnable)) < 0) {
+            throw std::runtime_error("Failed to set broadcast option\n");
         }
+    }
+
+    void set_destination_addr(const struct address& _dst_addr, u16 _port) {
+        dst_addr = get_address(_dst_addr.combined.c_str(), _port);
+    }
+
+    void bind_socket(u16 port) const {
+        bind_socket_port(socket_fd, port);
     }
 
     void bind_to_random() const {
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_ANY);
-        address.sin_port = 0;
-
-        if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&address), sizeof(address)) < 0) {
-            throw std::runtime_error("Failed to bind socket to random port");
-        }
+        bind_socket_port(socket_fd, 0);
     }
 
     void send_reply(const char* msg, size_t length) const {
@@ -113,10 +148,10 @@ public:
         }
     }
 
-    void multicast_message(char* msg, size_t n) {
+    void send_message(char* msg, size_t n) {
         errno = 0;
-        auto err = sendto(socket_fd, msg, n, 0, reinterpret_cast<struct sockaddr*>(&multicast_addr),
-                          sizeof(multicast_addr));
+        auto err = sendto(socket_fd, msg, n, 0, reinterpret_cast<struct sockaddr*>(&dst_addr),
+                          sizeof(dst_addr));
 
         if (err < 0 && (errno == ENETDOWN || errno == ENETUNREACH)) {
             return;
@@ -135,15 +170,44 @@ public:
         // TODO buffer size na datagram size
         ssize_t len = recvfrom(socket_fd, buffer.data(), buffer.capacity(), flags,
                                (struct sockaddr *) &sender_addr, &address_length);
-        cout << "read len:" << len << "\n";
+//        cout << "read len:" << len << "\n";
 
         if (len < 0 && (errno == ENETDOWN || errno == ENETUNREACH)) {
             return -1;
         } else if (len < 0) {
-            throw std::runtime_error("send reply failed");
+            throw std::runtime_error("receive message failed");
         }
 
         return len;
+    }
+};
+
+class TcpSocket {
+private:
+    int socket_fd{};
+    sockaddr_in addr;
+
+public:
+    TcpSocket(u16 port) {
+        socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (socket_fd == -1) {
+            throw std::runtime_error("Failed creating socket");
+        }
+
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_ANY);
+        addr.sin_port = htons(port);
+
+        if (bind(socket_fd, reinterpret_cast<struct sockaddr*>(&addr), sizeof(address)) < 0) {
+            throw std::runtime_error("Failed to bind socket");
+        }
+    }
+
+
+
+    ~TcpSocket() {
+        close(socket_fd);
     }
 };
 
