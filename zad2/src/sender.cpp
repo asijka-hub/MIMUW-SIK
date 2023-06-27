@@ -29,34 +29,26 @@ namespace {
     using namespace std;
     using std::optional;
 
-    //TODO ogarnac te end of line characters
     bool got_lookup(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return false;
 
         if (strcmp(buffer.data(), "ZERO_SEVEN_COME_IN\n") == 0) {
-            cout << "we got lookup\n";
             return true;
         }
         return false;
     }
 
-
-    // TODO moze dodatkowy scisly  check na znaki asci od 32 do 127
-    // TODO warunki maja ostatecznie luznie
     optional<vector<u64>> get_ints_from_rexmit(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return {};
 
         std::string input{buffer.data()};
 
-        cout << "received input: " << input << endl;
-
         std::regex pattern(R"(LOUDER_PLEASE \[((?:\d+(?:,)?)+)\])");
         std::smatch matches;
 
         if (std::regex_search(input, matches, pattern)) {
-            cout << "message ok\n";
             std::string integersStr = matches[1].str();
             std::vector<u64> integers;
 
@@ -67,21 +59,18 @@ namespace {
                 if (parse_to_uint_T<u64>(token, value)) {
                     integers.push_back(value);
                 } else {
-                    cout << "message look like rexmit but int parsing failed\n";
                     return {};
                 }
             }
 
             return integers;
         } else {
-            std::cout << "Invalid input format." << std::endl;
             return {};
         }
     }
 
     void listener_thread(atomic<bool>& active,
                          shared_ptr<ConcurrentSet>& set, struct SenderArgs& args) {
-        cout << "LISTENER thread started\n";
 
         UdpSocket listening_socket{args.mcast_addr, args.ctrl_port};
         listening_socket.bind_socket();
@@ -95,17 +84,13 @@ namespace {
             if (read_len < 0)
                 continue;
 
-            printf("got something: %s\n", buffer.data());
             if (got_lookup(read_len, buffer)) {
-
                 std::ostringstream oss;
                 string mcast_addr{args.mcast_addr.combined};
                 oss << "BOREWICZ_HERE [" << mcast_addr << "] [" << args.data_port << "] [" << args.name << "]";
                 std::string formatted_str = oss.str();
 
                 std::vector<char> char_vector(formatted_str.begin(), formatted_str.end());
-
-                cout << "message send: " << formatted_str << endl;
 
                 listening_socket.send_reply(formatted_str.c_str(), formatted_str.length());
 
@@ -115,8 +100,6 @@ namespace {
             auto ints = get_ints_from_rexmit(read_len, buffer);
 
             if (ints.has_value()) {
-                cout << "REXMIT\n";
-
                 for (auto e : ints.value())
                     set->add(e);
             }
@@ -125,8 +108,6 @@ namespace {
 
     void repeater_thread(atomic<bool>& active, shared_ptr<ConcurrentQueue>& queue,
                          shared_ptr<ConcurrentSet>& set, struct SenderArgs& args, UdpSocket& socket, std::time_t session_id) {
-        cout << "REPEATER thread started\n";
-
         std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
 
         auto psize = args.psize;
@@ -211,8 +192,6 @@ namespace {
                 memcpy(buffer.data() + 8, &first_byte, 8);
 
                 socket_fd.multicast_message(buffer.data(), buffer.size());
-
-                cout << "i\n";
             }
 
             // if readed data is less than psize we drop the last packet

@@ -27,14 +27,10 @@ namespace {
     using namespace std;
 
     void lookup_thread(atomic<bool>& active, UdpSocket& socket) {
-        cout << "LOOKUP thread started\n";
-
         string message{"ZERO_SEVEN_COME_IN\n"};
 
         while(active) {
             socket.multicast_message(message.data(), message.length());
-            cout << "lookup thread: SEND MESSAGE\n";
-            cout << "\n";
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -44,8 +40,6 @@ namespace {
             return {};
 
         std::string input{buffer.data()};
-
-        cout << "received input: " << input << endl;
 
         std::regex regex(R"(BOREWICZ_HERE \[((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}))\] \[(\d{1,5})\] \[(.+)\])");
         std::smatch match;
@@ -59,26 +53,14 @@ namespace {
 
             std::string name = match[7];
 
-            std::cout << "IP Address: " << ip_address << std::endl;
-            std::cout << "Port: " << port << std::endl;
-            std::cout << "Message: " << name << std::endl;
-            cout << "\n";
-
             auto tuple = make_tuple(ip_address, port, name);
-
             return tuple;
-
         } else {
-            std::cout << "Invalid input format." << std::endl;
-            cout << "\n";
-
             return {};
         }
     }
 
     void reply_thread(atomic<bool>& active, UdpSocket& socket, GuiHandler& guiHandler) {
-        cout << "REPLY thread started\n";
-
         vector<char> buffer(1000);
 
         while(active) {
@@ -93,17 +75,13 @@ namespace {
 
             if (reply.has_value()) {
                 guiHandler.add_station(reply.value(), rec_time);
-                cout << "GOT REPLY\n";
                 continue;
             }
 
         }
     }
 
-    void ui_thread(atomic<bool>& active, GuiHandler& guiHandler) {
-        cout << "UI thread started\n";
-
-
+    void ui_thread([[maybe_unused]] atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler) {
     }
 
     class Receiver {
