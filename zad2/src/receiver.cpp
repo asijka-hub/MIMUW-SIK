@@ -41,7 +41,7 @@ namespace {
 
         std::string input{buffer.data()};
 
-        std::regex regex(R"(BOREWICZ_HERE \[((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3}))\] \[(\d{1,5})\] \[(.+)\])");
+        std::regex regex(R"(BOREWICZ_HERE ((\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})) (\d{1,5}) (.+)\n)");
         std::smatch match;
 
         if (std::regex_match(input, match, regex)) {

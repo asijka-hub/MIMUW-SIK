@@ -29,6 +29,8 @@ namespace {
     using namespace std;
     using std::optional;
 
+    string borewicz_message;
+
     bool got_lookup(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return false;
@@ -69,8 +71,17 @@ namespace {
         }
     }
 
+    string get_borewicz_mess(struct SenderArgs& args) {
+        std::ostringstream oss;
+        string mcast_addr{args.mcast_addr.combined};
+        oss << "BOREWICZ_HERE " << mcast_addr << " " << args.data_port << " " << args.name << "\n";
+        std::string formatted_str = oss.str();
+
+        return formatted_str;
+    }
+
     void listener_thread(atomic<bool>& active,
-                         shared_ptr<ConcurrentSet>& set, struct SenderArgs& args) {
+                         shared_ptr<ConcurrentSet>& retransmission_set, struct SenderArgs& args) {
 
         UdpSocket listening_socket{};
         listening_socket.bind_socket(args.ctrl_port);
@@ -88,23 +99,16 @@ namespace {
             if (got_lookup(read_len, buffer)) {
                 cout << "received LOOKUP\n";
 
-                std::ostringstream oss;
-                string mcast_addr{args.mcast_addr.combined};
-                oss << "BOREWICZ_HERE [" << mcast_addr << "] [" << args.data_port << "] [" << args.name << "]";
-                std::string formatted_str = oss.str();
-
-                std::vector<char> char_vector(formatted_str.begin(), formatted_str.end());
-
-                listening_socket.send_reply(formatted_str.c_str(), formatted_str.length());
+                listening_socket.send_reply(borewicz_message.c_str(), borewicz_message.length());
 
                 continue;
             }
 
-            auto ints = get_ints_from_rexmit(read_len, buffer);
+            auto packet_numbers = get_ints_from_rexmit(read_len, buffer);
 
-            if (ints.has_value()) {
-                for (auto e : ints.value())
-                    set->add(e);
+            if (packet_numbers.has_value()) {
+                for (auto e : packet_numbers.value())
+                    retransmission_set->add(e);
             }
         }
     }
@@ -113,11 +117,9 @@ namespace {
                          shared_ptr<ConcurrentSet>& set, struct SenderArgs& args, UdpSocket& socket, std::time_t session_id) {
         std::this_thread::sleep_for(std::chrono::microseconds(args.rtime));
 
-        auto psize = args.psize;
-        u64 id = htobe64(session_id);
-        vector<char> buffer(psize + 2 * 8);
+        vector<char> buffer(args.psize + 2 * 8);
 
-        memcpy(buffer.data(), &id, 8);
+        *((u64*)buffer.data()) = htobe64(session_id);
 
         while (active) {
             auto packet_numbers = set->get_all_reset_set();
@@ -128,7 +130,7 @@ namespace {
                 auto packet_number = htobe64(number);
 
                 memcpy(buffer.data() + 8, &packet_number, 8);
-                memcpy(buffer.data() + 2 * 8, packet.data(), psize);
+                memcpy(buffer.data() + 2 * 8, packet.data(), args.psize);
 
                 socket.send_message(packet.data(), packet.size());
             }
@@ -148,8 +150,8 @@ namespace {
         shared_ptr<ConcurrentSet> first_byte_num_set;
 
         u64 get_current_first_byte_enum() {
-            u64 res = first_byte_enum;
-            res = htole64(res);
+            u64 res = first_byte_enum; //TODO
+            res = htobe64(res);
             first_byte_enum += psize;
 
             return res;
@@ -181,6 +183,8 @@ namespace {
                             std::ref(active), std::ref(retransmission_queue),
                             std::ref(first_byte_num_set), ref(args), ref(sending_socket), session_id};
             repeater.detach();
+
+            borewicz_message = get_borewicz_mess(args);
         }
 
         void read_and_send() {
@@ -188,9 +192,7 @@ namespace {
 
             vector<char> buffer(psize + 2 * 8);
 
-            u64 id = htobe64(session_id);
-            memcpy(buffer.data(), &id, 8);
-
+            *((u64*)buffer.data()) = htobe64(session_id);
 
             while (std::fread(buffer.data() + 2 * 8 , 1, psize, stdin) == psize) {
                 retransmission_queue->push(buffer.data() + 2 * 8);

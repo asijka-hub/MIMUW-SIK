@@ -30,7 +30,7 @@ public:
     void push(char* buffer) {
         std::unique_lock<std::mutex> lock(mut);
 
-        memccpy(queue.data() + last, buffer, 1, psize);
+        memccpy(queue.data() + last, buffer, 1, psize); //TODO
 
         last = (last + psize) % fsize;
         number_of_last += psize;
