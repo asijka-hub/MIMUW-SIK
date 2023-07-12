@@ -83,6 +83,22 @@ namespace {
         }
     }
 
+    char gui_mess[] = "------------------------------------------------------------------------\n"
+                      "\n"
+                      " SIK Radio\n"
+                      "\n"
+                      "------------------------------------------------------------------------\n"
+                      "\n"
+                      "PR1\n"
+                      "\n"
+                      "Radio \"357\"\n"
+                      "\n"
+                      " > Radio \"Disco Pruszkow\"\n"
+                      "\n"
+                      "------------------------------------------------------------------------\n";
+
+    char setting_right_mode[] = {static_cast<char>(255), static_cast<char>(253), 34};
+
     void ui_thread([[maybe_unused]] atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler, u16 ui_port) {
         int socket_fd = open_tcp_socket();
         bind_socket_port(socket_fd, ui_port);
@@ -98,6 +114,8 @@ namespace {
 
         const int buffer_size = 1000000;
         char buffer[buffer_size];
+
+        bool f = false;
 
         for (;;) {
             memset(buffer, 0, buffer_size);
@@ -116,12 +134,18 @@ namespace {
             // 3. in general, there is no rule that for each client's write(), there will be a corresponding read()
             size_t read_length;
             do {
+                if (!f) {
+                    send_message(client_fd, setting_right_mode, sizeof(setting_right_mode), 0);
+                    f = true;
+                }
+
                 int flags = 0;
                 read_length = receive_message(client_fd, buffer, buffer_size, flags);
                 if (read_length > 0) {
                     printf("Received %zd bytes from client %s:%u: \n", read_length, client_ip, client_port,
                            (int) read_length); // note: we specify the length of the printed string
-//                send_message(client_fd, buffer, read_length, flags);
+
+                  send_message(client_fd, gui_mess, sizeof(gui_mess), flags);
 //                printf("Sent %zd bytes to client %s:%u\n", read_length, client_ip, client_port);
                 }
             } while (read_length > 0);

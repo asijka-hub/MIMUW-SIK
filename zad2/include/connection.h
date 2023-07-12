@@ -77,13 +77,24 @@ int accept_connection(int socket_fd, struct sockaddr_in *client_address) {
     return client_fd;
 }
 
-inline static size_t receive_message(int socket_fd, void *buffer, size_t max_length, int flags) {
+size_t receive_message(int socket_fd, void *buffer, size_t max_length, int flags) {
     errno = 0;
     ssize_t received_length = recv(socket_fd, buffer, max_length, flags);
     if (received_length < 0) {
         throw std::runtime_error("receiving message failed\n");
     }
     return (size_t) received_length;
+}
+
+void send_message(int socket_fd, const void *message, size_t length, int flags) {
+    errno = 0;
+    ssize_t sent_length = send(socket_fd, message, length, flags);
+    if (sent_length < 0) {
+        throw std::runtime_error("sending message failed\n");
+    }
+    if (sent_length != (ssize_t) length) {
+        throw std::runtime_error("sending message failed\n");
+    }
 }
 
 class UdpSocket {
