@@ -41,7 +41,7 @@ namespace {
         return false;
     }
 
-    optional<vector<u64>> get_ints_from_rexmit(size_t read_len, vector<char>& buffer) {
+    optional<vector<u64>> get_numbers_from_rexmit(size_t read_len, vector<char>& buffer) {
         if (read_len <= 0)
             return {};
 
@@ -64,6 +64,8 @@ namespace {
                     return {};
                 }
             }
+
+            cout << "recieved correct rexmit\n";
 
             return integers;
         } else {
@@ -104,7 +106,7 @@ namespace {
                 continue;
             }
 
-            auto packet_numbers = get_ints_from_rexmit(read_len, buffer);
+            auto packet_numbers = get_numbers_from_rexmit(read_len, buffer);
 
             if (packet_numbers.has_value()) {
                 for (auto e : packet_numbers.value())
@@ -125,8 +127,8 @@ namespace {
             auto packet_numbers = set->get_all_reset_set();
 
             for (auto number : packet_numbers) {
-                auto packet = queue->get(number);
 
+                auto packet = queue->get(number);
                 auto packet_number = htobe64(number);
 
                 memcpy(buffer.data() + 8, &packet_number, 8);
