@@ -106,6 +106,12 @@ private:
 public:
     UdpSocket() {
         socket_fd = open_udp_socket();
+        int reuse = 1;
+        //FIXME
+        if (setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+            std::cerr << "Failed to set SO_REUSEADDR option" << std::endl;
+            close(socket_fd);
+        }
     }
 
     ~UdpSocket() {

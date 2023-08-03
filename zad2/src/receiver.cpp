@@ -26,11 +26,11 @@
 namespace {
     using namespace std;
 
-    void lookup_thread(atomic<bool>& active, UdpSocket& socket) {
+    void lookup_thread(atomic<bool>& active, UdpSocket& lookup_replay_socket) {
         string message{"ZERO_SEVEN_COME_IN\n"};
 
         while(active) {
-            socket.send_message(message.data(), message.length());
+            lookup_replay_socket.send_message(message.data(), message.length());
             std::this_thread::sleep_for(std::chrono::seconds(5));
         }
     }
@@ -66,15 +66,18 @@ namespace {
         while(active) {
             buffer.clear();
             auto read_len = socket.recv_message(buffer);
+            auto rec_time = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
+            printf("recieved: %s", buffer.data());
             if (read_len < 0)
                 continue;
 
             auto reply = get_reply(read_len, buffer);
-            auto rec_time = chrono::system_clock::to_time_t(chrono::system_clock::now());
 
             if (reply.has_value()) {
-                cout << "received BOREWICZ\n";
+                auto station = reply.value();
+                cout << "received BOREWICZ:" << get<0>(station) << " " << get<1>(station) << " "
+                        << get<2>(station) << "\n";
 
                 guiHandler.add_station(reply.value(), rec_time);
                 continue;
@@ -97,16 +100,18 @@ namespace {
                       "\n"
                       "------------------------------------------------------------------------\n";
 
-    char setting_right_mode[] = {static_cast<char>(255), static_cast<char>(253), 34};
+    char setting_right_mode[] = {static_cast<char>(255), static_cast<char>(253), 34  /* IAC DO LINEMODE */
+//                                 ,static_cast<char>(255), static_cast<char>(250), 34, 1, 0,
+//                                 static_cast<char>(255), static_cast<char>(240) /* IAC SB LINEMODE MODE 0 IAC SE */
+//                                 ,static_cast<char>(255), static_cast<char>(251), 1 /* IAC WILL ECHO */
+    };
 
-    void ui_thread([[maybe_unused]] atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler, u16 ui_port) {
+    void ui_thread(atomic<bool>& active,[[maybe_unused]] GuiHandler& guiHandler, u16 ui_port) {
         int socket_fd = open_tcp_socket();
         bind_socket_port(socket_fd, ui_port);
 
         int queue_length = 5;
-
         int err = listen(socket_fd, queue_length);
-
         if (err != 0) {
             cout << "err: " << err << endl;
             throw std::runtime_error("listening failed\n");
@@ -115,9 +120,7 @@ namespace {
         const int buffer_size = 1000000;
         char buffer[buffer_size];
 
-        bool f = false;
-
-        for (;;) {
+        while(active) {
             memset(buffer, 0, buffer_size);
             struct sockaddr_in client_address;
             int client_fd = accept_connection(socket_fd, &client_address);
@@ -133,26 +136,30 @@ namespace {
             // 2. a single read() call may not read the entire message, even if it fits in the buffer
             // 3. in general, there is no rule that for each client's write(), there will be a corresponding read()
             size_t read_length;
-            do {
-                if (!f) {
-                    send_message(client_fd, setting_right_mode, sizeof(setting_right_mode), 0);
-                    f = true;
-                }
 
+            send_message(client_fd, setting_right_mode, sizeof(setting_right_mode), 0);
+
+            do {
                 int flags = 0;
                 read_length = receive_message(client_fd, buffer, buffer_size, flags);
                 if (read_length > 0) {
                     printf("Received %zd bytes from client %s:%u: \n", read_length, client_ip, client_port,
                            (int) read_length); // note: we specify the length of the printed string
 
-                  send_message(client_fd, gui_mess, sizeof(gui_mess), flags);
+                    string clean = "\x1b[2J\x1b[H";
+                    send_message(client_fd, clean.data(), clean.size(), 0);
+
+                    string hide = "\x1b[?25l";
+                    send_message(client_fd, hide.data(), hide.size(), 0);
+
+
+                    send_message(client_fd, gui_mess, sizeof(gui_mess), flags);
 //                printf("Sent %zd bytes to client %s:%u\n", read_length, client_ip, client_port);
                 }
             } while (read_length > 0);
 
             printf("Closing connection\n");
             if (close(client_fd) != 0)
-
                 throw std::runtime_error("closing connection failed\n");
         }
     }
@@ -206,7 +213,7 @@ int main(int argc, char **argv) {
         Receiver receiver{program_args};
         receiver.start();
     } catch (const std::exception& e) {
-        std::cerr << e.what() << std::endl;
+        cerr << e.what() << std::endl;
         return 1;
     }
     return 0;

@@ -46,8 +46,11 @@ public:
     void add_station(const std::tuple<std::string, u16, std::string>& station, std::time_t time_added) {
         std::unique_lock<std::mutex> lock(mut);
 
-        if (!stations.contains(station))
+        if (!stations.contains(station)) {
+            cout << "GUI HANDLER: station added:" << std::get<0>(station) << " " << std::get<1>(station)
+                    << " " << std::get<2>(station) << " time: " << time_added << "\n";
             stations[station] = time_added;
+        }
     }
 
     auto get_active() {

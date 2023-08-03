@@ -64,7 +64,7 @@ struct SenderArgs parse_sender_args(int argc, char **argv) {
 
     desc.add_options()
             ("help,h", "produce help message")
-            ("a,a", po::value<std::string>(&program_args.mcast_addr.combined)->required(), "broadcast address")
+            ("a,a", po::value<std::string>(&program_args.mcast_addr.combined)->required(), "multicast address")
             ("P,P", po::value<int>(&data_port)->default_value(DEFAULT_DATA_PORT)->notifier(&check_port),
              "port used for DATA transfer [0-65535]")
             ("C,C", po::value<int>(&ctrl_port)->default_value(DEFAULT_CTRL_PORT)->notifier(&check_port),
@@ -129,7 +129,7 @@ struct ReceiverArgs parse_receiver_args(int argc, char **argv) {
             ("C,C", po::value<int>(&ctrl_port)->default_value(DEFAULT_CTRL_PORT)->notifier(&check_port),
              "port used for CONTROL data transfer [0-65535]")
             ("U,U", po::value<int>(&ui_port)->default_value(DEFAULT_UI_PORT)->notifier(&check_port),
-             "port used for CONTROL data transfer [0-65535]")
+             "port used for UI data transfer [0-65535]")
             ("b,b", po::value<i64>(&bsize)->default_value(DEFAULT_BSIZE)->notifier(&check_positive<i64>), "size of audio_data > 0")
             ("R,R", po::value<i64>(&rtime)->default_value(DEFAULT_RTIME)->notifier(&check_positive<i64>), "retransmission time > 0")
             ("n,n", po::value<std::string>(&program_args.name)->default_value(DEFAULT_NAME), "name");

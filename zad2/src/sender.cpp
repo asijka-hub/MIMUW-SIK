@@ -99,7 +99,7 @@ namespace {
                 continue;
 
             if (got_lookup(read_len, buffer)) {
-                cout << "received LOOKUP\n";
+                cout << "received LOOKUP -> sending message:" << borewicz_message;
 
                 listening_socket.send_reply(borewicz_message.c_str(), borewicz_message.length());
 
@@ -218,7 +218,7 @@ int main(int argc, char **argv) {
         Sender sender{program_args};
         sender.read_and_send();
     } catch (const std::exception& e) {
-        cerr << e.what();
+        cerr << e.what() << std::endl;
         return 1;
     }
     return 0;
